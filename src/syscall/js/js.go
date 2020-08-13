@@ -14,6 +14,7 @@ package js
 import (
 	"runtime"
 	"unsafe"
+	"sync"
 )
 
 // ref is used to identify a JavaScript value, since the value itself can not be passed to WebAssembly.
@@ -358,15 +359,41 @@ func (v Value) SetIndex(i int, x interface{}) {
 
 func valueSetIndex(v ref, i int, x ref)
 
-func makeArgs(args []interface{}) ([]Value, []ref) {
-	argVals := make([]Value, len(args))
-	argRefs := make([]ref, len(args))
+const pooledArgsLength = 16
+
+var (
+	argRefsPool = sync.Pool{New: func() interface{} {
+		return make([]ref, pooledArgsLength)
+	}}
+	argValsPool = sync.Pool{New: func() interface{} {
+		return make([]Value, pooledArgsLength)
+	}}
+)
+
+func makeArgs(args []interface{}) (argRefs []ref, argRefsIface interface{}, argValsIface interface{}) {
+	var argVals []Value
+	if len(args) > pooledArgsLength {
+		argRefs = make([]ref, len(args))
+		argVals = make([]Value, len(args))
+		argValsIface = argVals
+	} else {
+		argRefsIface = argRefsPool.Get()
+		argRefs = argRefsIface.([]ref)[:len(args)]
+		argValsIface := argValsPool.Get()
+		argVals = argValsIface.([]Value)[:len(args)]
+	}
 	for i, arg := range args {
 		v := ValueOf(arg)
 		argVals[i] = v
 		argRefs[i] = v.ref
 	}
-	return argVals, argRefs
+	return
+}
+
+func poolArgs(argRefsIface interface{}, argValsIface interface{}) {
+	// No need to check length, because larger slices are compatible
+	argRefsPool.Put(argRefsIface)
+	argValsPool.Put(argValsIface)
 }
 
 // Length returns the JavaScript property "length" of v.
@@ -386,10 +413,9 @@ func valueLength(v ref) int
 // It panics if v has no method m.
 // The arguments get mapped to JavaScript values according to the ValueOf function.
 func (v Value) Call(m string, args ...interface{}) Value {
-	argVals, argRefs := makeArgs(args)
+	argRefs, iface1, iface2 := makeArgs(args)
 	res, ok := valueCall(v.ref, m, argRefs)
-	runtime.KeepAlive(v)
-	runtime.KeepAlive(argVals)
+	poolArgs(iface1, iface2)
 	if !ok {
 		if vType := v.Type(); !vType.isObject() { // check here to avoid overhead in success case
 			panic(&ValueError{"Value.Call", vType})
@@ -408,10 +434,9 @@ func valueCall(v ref, m string, args []ref) (ref, bool)
 // It panics if v is not a JavaScript function.
 // The arguments get mapped to JavaScript values according to the ValueOf function.
 func (v Value) Invoke(args ...interface{}) Value {
-	argVals, argRefs := makeArgs(args)
+	argRefs, iface1, iface2 := makeArgs(args)
 	res, ok := valueInvoke(v.ref, argRefs)
-	runtime.KeepAlive(v)
-	runtime.KeepAlive(argVals)
+	poolArgs(iface1, iface2)
 	if !ok {
 		if vType := v.Type(); vType != TypeFunction { // check here to avoid overhead in success case
 			panic(&ValueError{"Value.Invoke", vType})
@@ -427,10 +452,9 @@ func valueInvoke(v ref, args []ref) (ref, bool)
 // It panics if v is not a JavaScript function.
 // The arguments get mapped to JavaScript values according to the ValueOf function.
 func (v Value) New(args ...interface{}) Value {
-	argVals, argRefs := makeArgs(args)
+	argRefs, iface1, iface2 := makeArgs(args)
 	res, ok := valueNew(v.ref, argRefs)
-	runtime.KeepAlive(v)
-	runtime.KeepAlive(argVals)
+	poolArgs(iface1, iface2)
 	if !ok {
 		if vType := v.Type(); vType != TypeFunction { // check here to avoid overhead in success case
 			panic(&ValueError{"Value.Invoke", vType})
