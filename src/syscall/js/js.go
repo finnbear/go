@@ -373,8 +373,12 @@ func makeArgs(args []interface{}) (argVals []Value, argRefs []ref) {
 		argValsPool = argValsPool[:last]
 		argRefsPool = argRefsPool[:last]
 	} else {
-		argVals = make([]Value, pooledArgsLength)
-		argRefs = make([]ref, pooledArgsLength)
+		size := pooledArgsLength
+		if size < len(args) {
+			size = len(args)
+		}
+		argVals = make([]Value, size)
+		argRefs = make([]ref, size)
 	}
 	argVals, argRefs = argVals[:len(args)], argRefs[:len(args)]
 	for i, arg := range args {
