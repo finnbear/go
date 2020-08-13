@@ -414,6 +414,7 @@ func valueLength(v ref) int
 // The arguments get mapped to JavaScript values according to the ValueOf function.
 func (v Value) Call(m string, args ...interface{}) Value {
 	argRefs, iface1, iface2 := makeArgs(args)
+	runtime.KeepAlive(v)
 	res, ok := valueCall(v.ref, m, argRefs)
 	poolArgs(iface1, iface2)
 	if !ok {
@@ -436,6 +437,7 @@ func valueCall(v ref, m string, args []ref) (ref, bool)
 func (v Value) Invoke(args ...interface{}) Value {
 	argRefs, iface1, iface2 := makeArgs(args)
 	res, ok := valueInvoke(v.ref, argRefs)
+	runtime.KeepAlive(v)
 	poolArgs(iface1, iface2)
 	if !ok {
 		if vType := v.Type(); vType != TypeFunction { // check here to avoid overhead in success case
@@ -454,6 +456,7 @@ func valueInvoke(v ref, args []ref) (ref, bool)
 func (v Value) New(args ...interface{}) Value {
 	argRefs, iface1, iface2 := makeArgs(args)
 	res, ok := valueNew(v.ref, argRefs)
+	runtime.KeepAlive(v)
 	poolArgs(iface1, iface2)
 	if !ok {
 		if vType := v.Type(); vType != TypeFunction { // check here to avoid overhead in success case
