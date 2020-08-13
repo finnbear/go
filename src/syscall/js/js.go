@@ -358,9 +358,21 @@ func (v Value) SetIndex(i int, x interface{}) {
 
 func valueSetIndex(v ref, i int, x ref)
 
-func makeArgs(args []interface{}) ([]Value, []ref) {
-	argVals := make([]Value, len(args))
-	argRefs := make([]ref, len(args))
+var (
+	argValsSlice []Value
+	argRefsSlice []ref
+)
+
+func makeArgs(args []interface{}) (argVals []Value, argRefs []ref) {
+	for i, _ := range argValsSlice {
+		argValsSlice[i] = Value{}
+	}
+	if len(args) > cap(argValsSlice) {
+		argValsSlice = make([]Value, 0, len(args))
+		argRefsSlice = make([]ref, 0, len(args))
+	}
+	argVals = argValsSlice[:len(args)]
+	argRefs = argRefsSlice[:len(args)]
 	for i, arg := range args {
 		v := ValueOf(arg)
 		argVals[i] = v
