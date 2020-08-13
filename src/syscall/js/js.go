@@ -358,15 +358,37 @@ func (v Value) SetIndex(i int, x interface{}) {
 
 func valueSetIndex(v ref, i int, x ref)
 
-func makeArgs(args []interface{}) ([]Value, []ref) {
-	argVals := make([]Value, len(args))
-	argRefs := make([]ref, len(args))
+const pooledArgsLength = 16
+
+var (
+	argRefsPool [][]ref
+	argValsPool [][]Value
+)
+
+func makeArgs(args []interface{}) (argVals []Value, argRefs []ref) {
+	if len(args) <= pooledArgsLength && len(argRefsPool) > 0 {
+		last := len(argValsPool) - 1
+		argVals = argValsPool[last]
+		argRefs = argRefsPool[last]
+		argValsPool = argValsPool[:last]
+		argRefsPool = argRefsPool[:last]
+	} else {
+		argVals = make([]Value, pooledArgsLength)
+		argRefs = make([]ref, pooledArgsLength)
+	}
+	argVals, argRefs = argVals[:len(args)], argRefs[:len(args)]
 	for i, arg := range args {
 		v := ValueOf(arg)
 		argVals[i] = v
 		argRefs[i] = v.ref
 	}
-	return argVals, argRefs
+	return
+}
+
+func poolArgs(argVals []Value, argRefs []ref) {
+	// No need to check length, because larger slices are compatible
+	argValsPool = append(argValsPool, argVals)
+	argRefsPool = append(argRefsPool, argRefs)
 }
 
 // Length returns the JavaScript property "length" of v.
@@ -389,7 +411,7 @@ func (v Value) Call(m string, args ...interface{}) Value {
 	argVals, argRefs := makeArgs(args)
 	res, ok := valueCall(v.ref, m, argRefs)
 	runtime.KeepAlive(v)
-	runtime.KeepAlive(argVals)
+	poolArgs(argVals, argRefs)
 	if !ok {
 		if vType := v.Type(); !vType.isObject() { // check here to avoid overhead in success case
 			panic(&ValueError{"Value.Call", vType})
@@ -411,7 +433,7 @@ func (v Value) Invoke(args ...interface{}) Value {
 	argVals, argRefs := makeArgs(args)
 	res, ok := valueInvoke(v.ref, argRefs)
 	runtime.KeepAlive(v)
-	runtime.KeepAlive(argVals)
+	poolArgs(argVals, argRefs)
 	if !ok {
 		if vType := v.Type(); vType != TypeFunction { // check here to avoid overhead in success case
 			panic(&ValueError{"Value.Invoke", vType})
@@ -430,7 +452,7 @@ func (v Value) New(args ...interface{}) Value {
 	argVals, argRefs := makeArgs(args)
 	res, ok := valueNew(v.ref, argRefs)
 	runtime.KeepAlive(v)
-	runtime.KeepAlive(argVals)
+	poolArgs(argVals, argRefs)
 	if !ok {
 		if vType := v.Type(); vType != TypeFunction { // check here to avoid overhead in success case
 			panic(&ValueError{"Value.Invoke", vType})
